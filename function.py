@@ -5,6 +5,71 @@ from sqlalchemy import create_engine
 from twstock import Stock
 import matplotlib.pyplot as plt
 
+def past_synthesis(stock_id):
+    stock = Stock(stock_id)
+    data = stock.fetch_from(2022,1)
+    df = pd.DataFrame(data)
+    time_tap = df['date'].tolist()
+    close_list = df['close'].tolist()
+    [macd, diff, Hist] = MACD(close_list)
+    start_point = 0
+    start_time = 0
+    end_point = 0
+    end_time = 0
+    reward_record = []
+    time_stamp = []
+    for idx in range(1,len(macd)):
+        if (diff[idx-1]<macd[idx-1]) and (diff[idx]<macd[idx]) and (macd[idx-1]<0) and (macd[idx]<0):
+            if (Hist[idx-1]<macd[idx-1]) and (Hist[idx]>=macd[idx]):
+                start_point = df['close'][idx]
+                start_time = df['date'][idx]
+        if (start_point>0) and (diff[idx-1]>macd[idx-1]) and (diff[idx]>macd[idx]) and (macd[idx-1]>0) and (macd[idx]>0):
+            if (Hist[idx-1]>macd[idx-1]) and (Hist[idx]<=macd[idx]):
+                end_point = df['close'][idx]
+                end_time = df['date'][idx]
+                reward_record.append(end_point-start_point)
+                time_stamp.append((start_time,end_time))
+                start_point = 0
+                end_point = 0
+
+    if start_point>0:
+        reward_record.append(end_point-start_point)
+        time_stamp.append((start_time,end_time))
+    return [reward_record, time_stamp]
+
+def ETF_list(ETF_id_list):
+    id_list = []
+    for ETF_id in ETF_id_list:
+        url = 'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID='+ETF_id
+        res = requests.get(url)
+        soup = BeautifulSoup(res.text, "lxml") 
+        look_up_table = soup.find_all("table", {"class": "p4_2 row_bg_2n row_mouse_over"})
+        target_table = look_up_table[1]
+        raw_list = target_table.findAll('nobr')
+        for idx in range(len(raw_list)):
+            if (idx%3==0) and (raw_list[idx] not in id_list):
+                id_list.append(raw_list[idx].text)
+    return id_list
+
+def Update_potential_stock():
+    f = open('./high_level_control.txt', 'r')
+    etf_list = []
+    corp_list = []
+    for line in f.readlines(): 
+        if 'ETF' in line:   # ETF Constituent
+            for word in line.split()[1:]:
+                if ',' in word:
+                    word = word[:-1]
+                etf_list.append(word)
+            corp_list.extend(ETF_list(etf_list))
+        elif 'stock' in line:
+            for word in line.split()[1:]:
+                if ',' in word:
+                    word = word[:-1]
+                if word not in corp_list:
+                    corp_list.append(word)
+    return corp_list
+
 def Create_stock_index_table():
     url = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2" 
     res = requests.get(url)
