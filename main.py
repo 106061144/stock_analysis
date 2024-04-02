@@ -5,7 +5,7 @@ if __name__ == '__main__':
     # df = pd.read_csv('stock_index.csv')
     # stock_no = df['stock_code'][0]
     stock_list = Update_potential_stock()
-    [reward, time_stamp] = past_synthesis('2330')
+    [reward, time_stamp] = past_synthesis('2884')
     print(reward)
     print(time_stamp)
     # for stock_no in stock_list:
