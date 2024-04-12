@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 
 def past_synthesis(stock_id):
     stock = Stock(stock_id)
-    data = stock.fetch_from(2022, 1)
+    data = stock.fetch_from(2023, 1)
     df = pd.DataFrame(data)
     close_list = df['close'].tolist()
     [macd, diff, Hist] = MACD(close_list)
     bottom_line = EMA_cal(30, close_list)
-    start_point = 0
-    start_time = 0
+    start_point_list = []
+    start_time_list = []
     end_point = 0
     end_time = 0
     ready_start_flag = 0
@@ -22,39 +22,44 @@ def past_synthesis(stock_id):
     reward_record = []
     time_stamp = []
     for idx in range(1, len(macd)):
-        if (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (macd[idx-1] < 3) and (macd[idx] < 3):
-            if (Hist[idx-1] < macd[idx-1]) and (Hist[idx] >= macd[idx]):
+        if (ready_start_flag==0) and (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (macd[idx-1] < 2) and (macd[idx] < 2):
+            if (Hist[idx-1] < Hist[idx]):
                 ready_start_flag = 1
-        if ready_start_flag and ready_start_flag < 4:
+                
+        if ready_start_flag and ready_start_flag < 4:   # 4 transaction days pending
             if diff[idx-1] <= diff[idx]:
-                start_point = df['close'][idx]
-                start_time = df['date'][idx]
+                start_point_list.append(df['close'][idx])
+                start_time_list.append(df['date'][idx])
                 ready_start_flag = 0
             else:
                 ready_start_flag = ready_start_flag + 1
         else:
-            ready_start_flag = 0
+            ready_start_flag = 0                        # 4 transaction days expired
 
-        if (start_point > 0) and (diff[idx-1] > macd[idx-1]) and (diff[idx] > macd[idx]) and (macd[idx-1] > 0) and (macd[idx] > 0):
+        if (len(start_point_list) > 0) and (diff[idx-1] > macd[idx-1]) and (diff[idx] > macd[idx]) and (macd[idx-1] > 0) and (macd[idx] > 0):
             if (Hist[idx-1] > macd[idx-1]) and (Hist[idx] <= macd[idx]):
                 ready_end_flag = 1
         if ready_end_flag:
             if close_list[idx] < bottom_line[idx]:
-                end_point = df['close'][idx]
-                end_time = df['date'][idx]
-                reward_record.append(end_point-start_point)
-                time_stamp.append((start_time, end_time))
-                start_point = 0
-                end_point = 0
-                ready_end_flag = 0
-            else:
-                ready_end_flag = ready_end_flag + 1
+                if ready_end_flag>=3:
+                    end_point = df['close'][idx]
+                    end_time = df['date'][idx]
+                    for idx_s in range(len(start_point_list)):
+                        reward_record.append(end_point-start_point_list[idx_s])
+                        time_stamp.append((start_time_list[idx_s], end_time))
+                    start_point_list = []
+                    start_time_list = []
+                    end_point = 0
+                    ready_end_flag = 0
+                else:
+                    ready_end_flag = ready_end_flag + 1
         else:
             ready_end_flag = 0
 
-    if start_point > 0:
-        reward_record.append(df['close'][idx-1]-start_point)
-        time_stamp.append((start_time, df['date'][idx-1]))
+    for idx_s in range(len(start_point_list)):
+        reward_record.append(df['close'][idx-1]-start_point_list[idx_s])
+        print(df['close'][idx-1])
+        time_stamp.append((start_time_list[idx_s], df['date'][idx-1]))
     return [reward_record, time_stamp]
 
 
@@ -124,7 +129,7 @@ def EMA_cal(N, record):  # return a list length=record.length
 
 def MACD(record):
     Ema26 = EMA_cal(26, record)
-    Ema12 = EMA_cal(12, record)
+    Ema12 = EMA_cal(15, record)
     Diff = []
     for i in range(len(record)):
         Diff.append(Ema12[i]-Ema26[i])
