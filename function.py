@@ -5,21 +5,20 @@ from sqlalchemy import create_engine
 from twstock import Stock
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.dates import date2num
 
 
-def past_synthesis(stock_id, year, month):
+def past_synthesis(stock_id, year, month, print_log=False):
     stock = Stock(stock_id)
     data = stock.fetch_from(year, month)
     df = pd.DataFrame(data)
     close_list = df['close'].tolist()
     [macd, diff, Hist] = MACD(close_list)
     macd_std = np.std(macd)
-    thr_1 = macd_std/2  # case 1
+    thr_1 = macd_std  # case 1
     print('thr_1 = ', end=' ')
     print(thr_1)
     thr_2 = macd_std*1.5    # case 2
-    print('thr_2 = ', end=' ')
-    print(thr_2)
     Ema25_line = EMA_cal(25, close_list)
 
     [center_line_1, up_line_1, down_line_1] = Bollin_Band_cal(
@@ -35,14 +34,15 @@ def past_synthesis(stock_id, year, month):
     ready_start_flag_2 = 0
     end_flag1 = 0
     end_flag2 = 0
+    end_flag3 = 0
     consol_flag = False
     consol_max_cnt = 15
     consol_cnt = 0
     Bollin_mask = [center_line_1, up_line_1, down_line_1]
     reward_record = []
     time_stamp = []
-    consol_decision = []
-    for idx in range(2, len(macd)):
+    consol_decision = np.zeros(len(macd))
+    for idx in range(30, len(macd)):
         # Consolidation decision
         # Design core: it is hard to enter Bollinger band, but also hard to escape Bollin band
         if consol_flag:
@@ -53,7 +53,8 @@ def past_synthesis(stock_id, year, month):
             if close_list[idx] > Bollin_mask[1][idx] or close_list[idx] < Bollin_mask[2][idx]:
                 consol_flag = False
                 consol_cnt = consol_cnt - 1
-                print('consol turn off')
+                if print_log:
+                    print('consol turn off')
 
         else:
             if close_list[idx] <= up_line_1[idx] and close_list[idx] >= down_line_1[idx]:
@@ -67,26 +68,34 @@ def past_synthesis(stock_id, year, month):
                         consol_flag = True
                     else:
                         consol_cnt = consol_cnt - 3
-                    print('consol turn on')
+                    if print_log:
+                        print('consol turn on')
             else:
                 consol_cnt = consol_cnt - 3
                 if consol_cnt < 0:
                     consol_cnt = 0
-
+        if consol_flag:
+            consol_decision[idx] = 1
+        # ========================================================================================================
+        # buy condition
         if ready_start_flag_1 == 0 and (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):   # case 1
             ready_start_flag_1 = 1
-            print('case 1', end=' ')
-            print(df['date'][idx])
+            if print_log:
+                print('case 1', end=' ')
+                print(df['date'][idx])
         elif (diff[idx-1] < macd[idx-1]) and (diff[idx] >= macd[idx]) and (diff[idx] < 0) and (abs(macd[idx-1]) < thr_2) and (abs(macd[idx]) < thr_2):  # case 2
-            ready_start_flag_2 = 1
-            print('case 2', end=' ')
-            print(df['date'][idx])
+            ready_start_flag_2 = 0  # unable ready_start_flag_2
+            if print_log:
+                print('case 2', end=' ')
+                print(df['date'][idx])
 
-        if ready_start_flag_1 and ready_start_flag_1 <= 5:   # one week transaction days pending
+        if ready_start_flag_1 and ready_start_flag_1 <= 3:   # 8 transaction days pending
             if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and consol_flag == False:
                 start_point_list.append(df['close'][idx])
                 start_time_list.append(df['date'][idx])
                 ready_start_flag_1 = 0
+            elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):
+                ready_start_flag_1 = 1
             else:
                 ready_start_flag_1 = ready_start_flag_1 + 1
         else:
@@ -102,15 +111,19 @@ def past_synthesis(stock_id, year, month):
                 ready_start_flag_2 = ready_start_flag_2 + 1
         else:
             ready_start_flag_2 = 0
-
+        # ========================================================================================================
+        # sell condition
         if (len(start_point_list) > 0):
+            # stop loss point
 
             if close_list[idx] < Ema25_line[idx] and (diff[idx] > 0):
                 end_flag1 = 1
             if Hist[idx] <= 0:
                 end_flag2 = 1
+            if close_list[idx] <= Bollin_mask[2][idx]:
+                end_flag3 = 1
 
-            if end_flag1 * end_flag2:
+            if end_flag1 * end_flag2 * end_flag3:
                 end_point = df['close'][idx]
                 end_time = df['date'][idx]
                 for idx_s in range(len(start_point_list)):
@@ -122,13 +135,26 @@ def past_synthesis(stock_id, year, month):
                 end_point = 0
                 end_flag1 = 0
                 end_flag2 = 0
+                end_flag3 = 0
+        # ========================================================================================================
 
     for idx_s in range(len(start_point_list)):
         reward_record.append(df['close'][idx-1]-start_point_list[idx_s])
-        print(df['close'][idx-1])
         time_stamp.append(
             (start_time_list[idx_s], df['date'][idx-1], start_point_list[idx_s], end_point))
-    return [reward_record, time_stamp, Bollin_mask]
+    consol_date = []
+    pre_ele = 0
+    for idx, element in enumerate(consol_decision):
+        tmp = []
+        if pre_ele == 0 and element == 1:
+            tmp.append(df['date'][idx])
+        elif pre_ele == 1 and element == 0:
+            tmp.append(df['date'][idx])
+            consol_date.append(tmp)
+            tmp = []
+        pre_ele = element
+
+    return [reward_record, time_stamp, Bollin_mask, consol_date]
 
 
 def ETF_list(ETF_id_list):
@@ -148,7 +174,7 @@ def ETF_list(ETF_id_list):
 
 
 def Update_potential_stock():
-    f = open('./high_level_control.txt', 'r')
+    f = open('high_level_control.txt', 'r')
     etf_list = []
     corp_list = []
     for line in f.readlines():
@@ -215,8 +241,8 @@ def EMA_cal(N, record):  # return a list length=record.length
 
 
 def MACD(record):
-    Ema26 = EMA_cal(26, record)
-    Ema12 = EMA_cal(12, record)
+    Ema26 = EMA_cal(30, record)
+    Ema12 = EMA_cal(16, record)
     Diff = []
     for i in range(len(record)):
         Diff.append(Ema12[i]-Ema26[i])
