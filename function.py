@@ -4,63 +4,109 @@ import pandas as pd
 from sqlalchemy import create_engine
 from twstock import Stock
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-def past_synthesis(stock_id):
+def past_synthesis(stock_id, year, month):
     stock = Stock(stock_id)
-    data = stock.fetch_from(2023, 1)
+    data = stock.fetch_from(year, month)
     df = pd.DataFrame(data)
     close_list = df['close'].tolist()
     [macd, diff, Hist] = MACD(close_list)
-    bottom_line = EMA_cal(30, close_list)
+    macd_std = np.std(macd)
+    thr_1 = macd_std/2  # case 1
+    thr_2 = macd_std*1.5    # case 2
+    Ema3_line = EMA_cal(3, close_list)
+    Ema25_line = EMA_cal(25, close_list)
+    [center_line, up_line, down_line] = Bollin_Band_cal(close_list)
+
     start_point_list = []
     start_time_list = []
     end_point = 0
     end_time = 0
-    ready_start_flag = 0
-    ready_end_flag = 0
+    ready_start_flag_1 = 0
+    ready_start_flag_2 = 0
+    end_flag1 = 0
+    end_flag2 = 0
+    consol_flag = False
+    consol_max_cnt = 10
+    consol_cnt = 0
+    Bollin_mask = [center_line, up_line, down_line]
     reward_record = []
     time_stamp = []
-    for idx in range(1, len(macd)):
-        if (ready_start_flag==0) and (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (macd[idx-1] < 2) and (macd[idx] < 2):
-            if (Hist[idx-1] < Hist[idx]):
-                ready_start_flag = 1
+    for idx in range(2, len(macd)):
+        # Consolidation decision
+        if consol_flag:
+            # breakout condition
+            if close_list[idx]>Bollin_mask[1][idx-1] or close_list[idx]<Bollin_mask[2][idx-1]:
+                consol_flag = False
+                consol_cnt = 0
+                print('consol turn off')
+        else:
+            if close_list[idx]<up_line[idx] and close_list[idx]>down_line[idx]:
+                consol_cnt = consol_cnt + 1
+            if consol_cnt>consol_max_cnt:
+                consol_flag = True
+                Bollin_mask[1][idx] = Bollin_mask[1][idx-1]
+                Bollin_mask[2][idx] = Bollin_mask[2][idx-1]
+
+                print('consol turn on')
+
+        if ready_start_flag_1==0 and (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):   # case 1
+            ready_start_flag_1 = 1
+            print('case 1', end=' ')
+            print(df['date'][idx])
+        elif (diff[idx-1] < macd[idx-1]) and (diff[idx] >= macd[idx]) and (diff[idx]<0) and (abs(macd[idx-1]) < thr_2) and (abs(macd[idx]) < thr_2):  # case 2
+            ready_start_flag_2 = 1
+            print('case 2', end=' ')
+            print(df['date'][idx])
                 
-        if ready_start_flag and ready_start_flag < 4:   # 4 transaction days pending
-            if diff[idx-1] <= diff[idx]:
+        if ready_start_flag_1 and ready_start_flag_1 <= 5:   # one week transaction days pending
+            if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx])  and (diff[idx-2] < diff[idx-1]) and consol_flag==False:
                 start_point_list.append(df['close'][idx])
                 start_time_list.append(df['date'][idx])
-                ready_start_flag = 0
+                ready_start_flag_1 = 0
             else:
-                ready_start_flag = ready_start_flag + 1
+                ready_start_flag_1 = ready_start_flag_1 + 1
         else:
-            ready_start_flag = 0                        # 4 transaction days expired
+            ready_start_flag_1 = 0                        # transaction days expired
 
-        if (len(start_point_list) > 0) and (diff[idx-1] > macd[idx-1]) and (diff[idx] > macd[idx]) and (macd[idx-1] > 0) and (macd[idx] > 0):
-            if (Hist[idx-1] > macd[idx-1]) and (Hist[idx] <= macd[idx]):
-                ready_end_flag = 1
-        if ready_end_flag:
-            if close_list[idx] < bottom_line[idx]:
-                if ready_end_flag>=3:
-                    end_point = df['close'][idx]
-                    end_time = df['date'][idx]
-                    for idx_s in range(len(start_point_list)):
-                        reward_record.append(end_point-start_point_list[idx_s])
-                        time_stamp.append((start_time_list[idx_s], end_time))
-                    start_point_list = []
-                    start_time_list = []
-                    end_point = 0
-                    ready_end_flag = 0
-                else:
-                    ready_end_flag = ready_end_flag + 1
+        if ready_start_flag_2 and ready_start_flag_2 <= 10: # 2 weeks transaction days pending
+            if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx])  and (diff[idx-2] < diff[idx-1]) and consol_flag==False:
+                if diff[idx]>0 and close_list[idx]>Ema25_line[idx]:
+                    start_point_list.append(df['close'][idx])
+                    start_time_list.append(df['date'][idx])
+                    ready_start_flag_2 = 0
+            else:
+                ready_start_flag_2 = ready_start_flag_2 + 1
         else:
-            ready_end_flag = 0
+            ready_start_flag_2 = 0   
+
+
+        if (len(start_point_list) > 0):
+            
+            if close_list[idx] < Ema25_line[idx] and (diff[idx]>0):
+                end_flag1 = 1
+            if Hist[idx] <= 0:
+                end_flag2 = 1
+            
+            if end_flag1 * end_flag2:
+                end_point = df['close'][idx]
+                end_time = df['date'][idx]
+                for idx_s in range(len(start_point_list)):
+                    reward_record.append(end_point-start_point_list[idx_s])
+                    time_stamp.append((start_time_list[idx_s], end_time, start_point_list[idx_s], end_point))
+                start_point_list = []
+                start_time_list = []
+                end_point = 0
+                end_flag1 = 0
+                end_flag2 = 0
 
     for idx_s in range(len(start_point_list)):
         reward_record.append(df['close'][idx-1]-start_point_list[idx_s])
         print(df['close'][idx-1])
-        time_stamp.append((start_time_list[idx_s], df['date'][idx-1]))
-    return [reward_record, time_stamp]
+        time_stamp.append((start_time_list[idx_s], df['date'][idx-1], start_point_list[idx_s], end_point))
+    return [reward_record, time_stamp, Bollin_mask]
 
 
 def ETF_list(ETF_id_list):
@@ -115,6 +161,23 @@ def Create_stock_index_table():
     df = pd.DataFrame(tds[1:], columns=['stock_code', 'stock_name'])
     df.to_csv('stock_index.csv', index=False)
 
+def MA_cal(N, record):  # return a list length=record.length
+    ma_record = []
+    ma_record_sum = []
+    for idx, element in enumerate(record):
+        if ma_record==[]:
+            ma_record_sum.append(element)
+            ma_record.append(element)
+        else:
+            if idx < N:
+                tmp = ma_record_sum[-1] + element
+                ma_record_sum.append(tmp)
+                ma_record.append(tmp/(idx+1))
+            else:
+                tmp = ma_record_sum[-1] - record[idx-N] + element
+                ma_record_sum.append(tmp)
+                ma_record.append(tmp/N)
+    return ma_record
 
 def EMA_cal(N, record):  # return a list length=record.length
     ema_record = []
@@ -129,7 +192,7 @@ def EMA_cal(N, record):  # return a list length=record.length
 
 def MACD(record):
     Ema26 = EMA_cal(26, record)
-    Ema12 = EMA_cal(15, record)
+    Ema12 = EMA_cal(12, record)
     Diff = []
     for i in range(len(record)):
         Diff.append(Ema12[i]-Ema26[i])
@@ -138,3 +201,18 @@ def MACD(record):
     for i in range(len(record)):
         Hist.append(Diff[i]-MACD_record[i])
     return [MACD_record, Diff, Hist]
+
+def Bollin_Band_cal(record):
+    ma_N = 60
+    Ma20_line = MA_cal(ma_N, record)
+    Up_line = []
+    Down_line = []
+    for idx, element in enumerate(record):
+        if idx<ma_N:
+            STD = np.std(record[:idx])
+        else:
+            STD = np.std(record[(idx-ma_N):idx])
+        Up_line.append(Ma20_line[idx] + 1.2 * STD)  # 1.5 std
+        Down_line.append(Ma20_line[idx] - 1.2 * STD)  # 1.5 std
+
+    return [Ma20_line, Up_line, Down_line]
