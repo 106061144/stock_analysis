@@ -1,1 +1,1 @@
-EMA_cal(7,close_list)
+Bollin_mask

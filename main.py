@@ -16,7 +16,6 @@ if __name__ == '__main__':
     volumn = df['capacity'].tolist()
     close_list = df['close'].tolist()
     [macd, diff, Hist] = MACD(close_list)
-    [center_line, up_line, down_line] = Bollin_Band_cal(close_list)
     
     ema7 = EMA_cal(7,close_list)
     Ma120 = MA_cal(120,close_list)
@@ -27,7 +26,7 @@ if __name__ == '__main__':
     #axs[0].plot(time_tap,bottom_line, label='25 ave')
     axs[0].plot(time_tap,Bollin_mask[1], label='BL up', linestyle='dashed')
     axs[0].plot(time_tap,Bollin_mask[2], label='BL down', linestyle='dashed')
-    axs[0].legend()
+    #axs[0].legend()
     axs[1].bar(time_tap,Hist)
     axs[1].plot(time_tap,macd, label='macd')
     axs[1].plot(time_tap,diff, label='diff')
