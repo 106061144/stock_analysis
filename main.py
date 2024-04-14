@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     # plot and analysis
     [reward, time_stamp, Bollin_mask, consol_date] = past_synthesis(
-        stock_list[18], 2022, 1, print_log=True)
+        stock_list[18], 2022, 1, print_log=False)
     print(reward)
     print(time_stamp)
     stock = Stock(stock_list[18])
@@ -34,6 +34,7 @@ if __name__ == '__main__':
     axs[0].plot(time_tap, Bollin_mask[2], label='BL down', linestyle='dashed')
     for date_set in consol_date:
         axs[0].axvspan(date_set[0], date_set[1], facecolor='pink', alpha=0.2)
+        axs[1].axvspan(date_set[0], date_set[1], facecolor='pink', alpha=0.2)
     # axs[0].legend()
     axs[1].bar(time_tap, Hist)
     axs[1].plot(time_tap, macd, label='macd')

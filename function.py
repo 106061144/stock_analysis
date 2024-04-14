@@ -28,6 +28,7 @@ def past_synthesis(stock_id, year, month, print_log=False):
 
     start_point_list = []
     start_time_list = []
+    start_idx_list = []
     end_point = 0
     end_time = 0
     ready_start_flag_1 = 0
@@ -44,26 +45,26 @@ def past_synthesis(stock_id, year, month, print_log=False):
     consol_decision = np.zeros(len(macd))
     for idx in range(30, len(macd)):
         # Consolidation decision
-        # Design core: it is hard to enter Bollinger band, but also hard to escape Bollin band
+        # Design core: hard to enter Bollinger band, but also hard to escape Bollin band
         if consol_flag:
+            # A tunnel with constant width
             Bollin_mask[0][idx] = Bollin_mask[0][idx-1]
             Bollin_mask[1][idx] = Bollin_mask[1][idx-1]
             Bollin_mask[2][idx] = Bollin_mask[2][idx-1]
             # breakout condition
             if close_list[idx] > Bollin_mask[1][idx] or close_list[idx] < Bollin_mask[2][idx]:
                 consol_flag = False
-                consol_cnt = consol_cnt - 1
+                consol_cnt = consol_cnt - 1 # to prevent a fake breakout, the minuted distant is conparily small
                 if print_log:
                     print('consol turn off')
 
         else:
             if close_list[idx] <= up_line_1[idx] and close_list[idx] >= down_line_1[idx]:
-                consol_cnt = consol_cnt + 1
+                consol_cnt = consol_cnt + 1 
                 if consol_cnt == consol_max_cnt:
-                    half_BW = up_line_2[idx] - center_line_2[idx]
-                    Bollin_mask[0][idx] = center_line_2[idx]
-                    Bollin_mask[1][idx] = Bollin_mask[0][idx] + half_BW
-                    Bollin_mask[2][idx] = Bollin_mask[0][idx] - half_BW
+                    Bollin_mask[0][idx] = center_line_2[idx]        
+                    Bollin_mask[1][idx] = up_line_2[idx]
+                    Bollin_mask[2][idx] = down_line_2[idx]
                     if close_list[idx] <= Bollin_mask[1][idx] and close_list[idx] >= Bollin_mask[2][idx]:
                         consol_flag = True
                     else:
@@ -83,16 +84,17 @@ def past_synthesis(stock_id, year, month, print_log=False):
             if print_log:
                 print('case 1', end=' ')
                 print(df['date'][idx])
-        elif (diff[idx-1] < macd[idx-1]) and (diff[idx] >= macd[idx]) and (diff[idx] < 0) and (abs(macd[idx-1]) < thr_2) and (abs(macd[idx]) < thr_2):  # case 2
-            ready_start_flag_2 = 0  # unable ready_start_flag_2
-            if print_log:
-                print('case 2', end=' ')
-                print(df['date'][idx])
+        # elif (diff[idx-1] < macd[idx-1]) and (diff[idx] >= macd[idx]) and (diff[idx] < 0) and (abs(macd[idx-1]) < thr_2) and (abs(macd[idx]) < thr_2):  # case 2
+        #     ready_start_flag_2 = 0  # unable ready_start_flag_2 now
+        #     if print_log:
+        #         print('case 2', end=' ')
+        #         print(df['date'][idx])
 
         if ready_start_flag_1 and ready_start_flag_1 <= 3:   # 8 transaction days pending
             if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and consol_flag == False:
                 start_point_list.append(df['close'][idx])
                 start_time_list.append(df['date'][idx])
+                start_idx_list.append(idx)
                 ready_start_flag_1 = 0
             elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):
                 ready_start_flag_1 = 1
@@ -101,28 +103,38 @@ def past_synthesis(stock_id, year, month, print_log=False):
         else:
             ready_start_flag_1 = 0                        # transaction days expired
 
-        if ready_start_flag_2 and ready_start_flag_2 <= 10:  # 2 weeks transaction days pending
-            if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and consol_flag == False:
-                if diff[idx] > 0 and close_list[idx] > Ema25_line[idx]:
-                    start_point_list.append(df['close'][idx])
-                    start_time_list.append(df['date'][idx])
-                    ready_start_flag_2 = 0
-            else:
-                ready_start_flag_2 = ready_start_flag_2 + 1
-        else:
-            ready_start_flag_2 = 0
+        # if ready_start_flag_2 and ready_start_flag_2 <= 10:  # 2 weeks transaction days pending
+        #     if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and consol_flag == False:
+        #         if diff[idx] > 0 and close_list[idx] > Ema25_line[idx]:
+        #             start_point_list.append(df['close'][idx])
+        #             start_time_list.append(df['date'][idx])
+        #             ready_start_flag_2 = 0
+        #     else:
+        #         ready_start_flag_2 = ready_start_flag_2 + 1
+        # else:
+        #     ready_start_flag_2 = 0
         # ========================================================================================================
         # sell condition
         if (len(start_point_list) > 0):
-            # stop loss point
-
+            # stop loss point==========================================
+            for idx_s, start_point in enumerate(start_point_list):
+                if close_list[idx] < start_point - 2*(up_line_1[start_idx_list[idx_s]] - center_line_1[start_idx_list[idx_s]]):
+                    end_flag1 = 1
+                    break
+            # consolidation============================================
+            if consol_flag==True:
+                end_flag1 = 1
+                end_flag2 = 1
+                end_flag3 = 1
+            # preferred sell condition=================================
             if close_list[idx] < Ema25_line[idx] and (diff[idx] > 0):
                 end_flag1 = 1
             if Hist[idx] <= 0:
                 end_flag2 = 1
             if close_list[idx] <= Bollin_mask[2][idx]:
                 end_flag3 = 1
-
+             
+            # =========================================================
             if end_flag1 * end_flag2 * end_flag3:
                 end_point = df['close'][idx]
                 end_time = df['date'][idx]
@@ -143,9 +155,9 @@ def past_synthesis(stock_id, year, month, print_log=False):
         time_stamp.append(
             (start_time_list[idx_s], df['date'][idx-1], start_point_list[idx_s], end_point))
     consol_date = []
+    tmp = []
     pre_ele = 0
     for idx, element in enumerate(consol_decision):
-        tmp = []
         if pre_ele == 0 and element == 1:
             tmp.append(df['date'][idx])
         elif pre_ele == 1 and element == 0:
