@@ -6,6 +6,9 @@ from twstock import Stock
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.dates import date2num
+from statistics import mean
+import time
+from selenium import webdriver
 
 
 def past_synthesis(stock_id, year, month, print_log=False):
@@ -13,6 +16,7 @@ def past_synthesis(stock_id, year, month, print_log=False):
     data = stock.fetch_from(year, month)
     df = pd.DataFrame(data)
     close_list = df['close'].tolist()
+    volumn = df['capacity'].tolist()
     [macd, diff, Hist] = MACD(close_list)
     macd_std = np.std(macd)
     thr_1 = macd_std  # case 1
@@ -26,6 +30,8 @@ def past_synthesis(stock_id, year, month, print_log=False):
     [center_line_2, up_line_2, down_line_2] = Bollin_Band_cal(
         close_list, 20, 1.5)
 
+    [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
+
     start_point_list = []
     start_time_list = []
     start_idx_list = []
@@ -36,6 +42,7 @@ def past_synthesis(stock_id, year, month, print_log=False):
     end_flag1 = 0
     end_flag2 = 0
     end_flag3 = 0
+    end_flag4 = 0
     consol_flag = False
     consol_max_cnt = 15
     consol_cnt = 0
@@ -54,15 +61,16 @@ def past_synthesis(stock_id, year, month, print_log=False):
             # breakout condition
             if close_list[idx] > Bollin_mask[1][idx] or close_list[idx] < Bollin_mask[2][idx]:
                 consol_flag = False
-                consol_cnt = consol_cnt - 1 # to prevent a fake breakout, the minuted distant is conparily small
+                # to prevent a fake breakout, the minuted distant is conparily small
+                consol_cnt = consol_cnt - 1
                 if print_log:
                     print('consol turn off')
 
         else:
             if close_list[idx] <= up_line_1[idx] and close_list[idx] >= down_line_1[idx]:
-                consol_cnt = consol_cnt + 1 
+                consol_cnt = consol_cnt + 1
                 if consol_cnt == consol_max_cnt:
-                    Bollin_mask[0][idx] = center_line_2[idx]        
+                    Bollin_mask[0][idx] = center_line_2[idx]
                     Bollin_mask[1][idx] = up_line_2[idx]
                     Bollin_mask[2][idx] = down_line_2[idx]
                     if close_list[idx] <= Bollin_mask[1][idx] and close_list[idx] >= Bollin_mask[2][idx]:
@@ -122,7 +130,7 @@ def past_synthesis(stock_id, year, month, print_log=False):
                     end_flag1 = 1
                     break
             # consolidation============================================
-            if consol_flag==True:
+            if consol_flag == True:
                 end_flag1 = 1
                 end_flag2 = 1
                 end_flag3 = 1
@@ -133,9 +141,11 @@ def past_synthesis(stock_id, year, month, print_log=False):
                 end_flag2 = 1
             if close_list[idx] <= Bollin_mask[2][idx]:
                 end_flag3 = 1
-             
+            if (obv_line[idx-1] < MA_obv_line[idx-1]) and (obv_line[idx] < MA_obv_line[idx]):
+                end_flag4 = 1
+
             # =========================================================
-            if end_flag1 * end_flag2 * end_flag3:
+            if end_flag1 * end_flag2 * end_flag3 * end_flag4:
                 end_point = df['close'][idx]
                 end_time = df['date'][idx]
                 for idx_s in range(len(start_point_list)):
@@ -169,14 +179,49 @@ def past_synthesis(stock_id, year, month, print_log=False):
     return [reward_record, time_stamp, Bollin_mask, consol_date]
 
 
+def OBV_calculation(close_list, volumn):
+    MA_days = 20
+    obv_line = []
+    MA_obv_line = []
+    for idx in range(len(close_list)):
+        if idx == 0:
+            MA_obv_line.append(volumn[0])
+            obv_line.append(volumn[0])
+        else:
+            if (close_list[idx] > close_list[idx-1]):
+                obv_line.append(obv_line[idx-1] + volumn[idx])
+            elif (close_list[idx] < close_list[idx-1]):
+                obv_line.append(obv_line[idx-1] - volumn[idx])
+            else:
+                obv_line.append(obv_line[idx-1])
+            if idx < MA_days:
+                MA_obv_line.append(mean(obv_line))
+            else:
+                MA_obv_line.append(mean(obv_line[idx-MA_days:idx]))
+
+    return [obv_line, MA_obv_line]
+
+
 def ETF_list(ETF_id_list):
     id_list = []
+    # option = webdriver.ChromeOptions()
+    # option.add_experimental_option("detach", True)
+
+    # driver = webdriver.Chrome(options=option)
+
+    # driver.get(
+    #     'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=0050&INITIALIZED=T')
     for ETF_id in ETF_id_list:
+
         url = 'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID='+ETF_id
-        res = requests.get(url)
+        headers = {'user-agent': 'Mozilla/5.0',
+                   'cookie': "CLIENT%5FID=20240114110958058%5F223%2E137%2E28%2E16; _ga=GA1.1.715182106.1705201801; TW_STOCK_BROWSE_LIST=0050%7C0056%7C5371%7C2324%7C4925%7C2362; IS_TOUCH_DEVICE=F; SCREEN_SIZE=WIDTH=1536&HEIGHT=864; __gads=ID=4a1b126239701d39:T=1705201800:RT=1714840488:S=ALNI_MZfDLvw8qHppZ7LH1JIIgMQwukOxA; __gpi=UID=00000cd940ee11b6:T=1705201800:RT=1714840488:S=ALNI_MbzTqR56NHyeacqcBA21VUEyMGP1g; __eoi=ID=8afe94021646063f:T=1710496105:RT=1714840488:S=AA-Afjbdzgo8E7ZffDjI3bl4g75P; _ga_0LP5MLQS7E=GS1.1.1714839405.8.1.1714840490.57.0.0; FCNEC=%5B%5B%22AKsRol8LxTsPxewGdimOT-M7K_CxhHI0b3s21-FwpXVsyuEn6x4HXuH1LmOglUUydg6w39gRj1oWMffTuNzFwwBtUMMiTcnMLmdhcrfT03CXRLuJjJ4Ov8I9hdMYsWn4P8ayi5X54hPkCQpY39qsNr3zdgfBH92AlA%3D%3D%22%5D%5D"}
+        res = requests.get(url, headers=headers)
+        print(res.text)
         soup = BeautifulSoup(res.text, "lxml")
         look_up_table = soup.find_all(
             "table", {"class": "p4_2 row_bg_2n row_mouse_over"})
+
         target_table = look_up_table[1]
         raw_list = target_table.findAll('nobr')
         for idx in range(len(raw_list)):
