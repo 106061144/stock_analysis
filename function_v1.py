@@ -11,44 +11,28 @@ import time
 from datetime import date
 from datetime import datetime
 from selenium import webdriver
-from tqdm import tqdm
 
 
-def qualify_stock(stock_id, year, month):
-    try:
-        stock = Stock(stock_id)
-        data = stock.fetch_from(year-1, month)
-        df = pd.DataFrame(data)
-        close_list = df['close'].tolist()
-        [macd, diff, Hist] = MACD(close_list[:200])
-        macd_std = np.std(macd)
-        print('hello', end=' ')
-        print(macd_std)
-        if macd_std > 0:
-            return True
-        else:
-            return False
-    except:
-        print(r'stock {stock_id} may not exist')
-        return False
-
-
-def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
+def past_synthesis(stock_id, year, month, print_log=False):
     stock = Stock(stock_id)
     data = stock.fetch_from(year, month)
     df = pd.DataFrame(data)
     close_list = df['close'].tolist()
-    time_tap = df['date'].tolist()
     volumn = df['capacity'].tolist()
     [macd, diff, Hist] = MACD(close_list)
-
-    Ema100_line = EMA_cal(100, close_list)
-    Ema5_line = EMA_cal(5, close_list)
+    # macd_std = np.std(macd)
+    # thr_1 = macd_std  # case 1
+    # print('thr_1 = ', end=' ')
+    # print(thr_1)
+    Ema25_line = EMA_cal(25, close_list)
+    Ema13_line = EMA_cal(60, close_list)
+    Ema8_line = EMA_cal(30, close_list)
+    Ema5_line = EMA_cal(15, close_list)
 
     [center_line_1, up_line_1, down_line_1] = Bollin_Band_cal(
         close_list, 50, 1.2)
-
-    Bollin_mask = [center_line_1, up_line_1, down_line_1]
+    [center_line_2, up_line_2, down_line_2] = Bollin_Band_cal(
+        close_list, 20, 1.5)
 
     [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
 
@@ -69,61 +53,86 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
     consol_flag = False
     consol_max_cnt = 15
     consol_cnt = 0
-    pending_flag = 0
-
+    Bollin_mask = [center_line_1, up_line_1, down_line_1]
     reward_record = []
     time_stamp = []
     consol_decision = np.zeros(len(macd))
-    macd_std = np.std(macd)
     for idx in range(30, len(macd)):
         # Consolidation decision
+        # Design core: hard to enter Bollinger band, but also hard to escape Bollin band
+        if consol_flag:
+            # A tunnel with constant width
+            Bollin_mask[0][idx] = Bollin_mask[0][idx-1]
+            Bollin_mask[1][idx] = Bollin_mask[1][idx-1]
+            Bollin_mask[2][idx] = Bollin_mask[2][idx-1]
+            # breakout condition
+            if close_list[idx] > Bollin_mask[1][idx] or close_list[idx] < Bollin_mask[2][idx]:
+                consol_flag = False
+                # to prevent a fake breakout, the minuted distant is conparily small
+                consol_cnt = consol_cnt - 1
+                if print_log:
+                    print('consol turn off')
+
+        else:
+            if close_list[idx] <= up_line_1[idx] and close_list[idx] >= down_line_1[idx]:
+                consol_cnt = consol_cnt + 1
+                if consol_cnt == consol_max_cnt:
+                    Bollin_mask[0][idx] = center_line_2[idx]
+                    Bollin_mask[1][idx] = up_line_2[idx]
+                    Bollin_mask[2][idx] = down_line_2[idx]
+                    if close_list[idx] <= Bollin_mask[1][idx] and close_list[idx] >= Bollin_mask[2][idx]:
+                        consol_flag = True
+                    else:
+                        consol_cnt = consol_cnt - 3
+                    if print_log:
+                        print('consol turn on')
+            else:
+                consol_cnt = consol_cnt - 3
+                if consol_cnt < 0:
+                    consol_cnt = 0
+        if consol_flag:
+            consol_decision[idx] = 1
         # ========================================================================================================
         # buy condition
         macd_std = np.std(macd[:idx])
-        thr_1 = macd_std/2
-        # print(thr_1)
-        if ready_start_flag_1 == 0 and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):   # case 1
-            if (start_time_list == []):
-                ready_start_flag_1 = 1
-            elif (time_tap[idx]-start_time_list[-1]).days > 14:
-                ready_start_flag_1 = 1
+        thr_1 = macd_std
+        if ready_start_flag_1 == 0 and (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):   # case 1
+            ready_start_flag_1 = 1
             if print_log:
                 print('case 1', end=' ')
-                print(time_tap[idx])
+                print(df['date'][idx])
 
-        if (ready_start_flag_1 and ready_start_flag_1 <= 3) or pending_flag:   # 3 transaction days pending
-            if (macd[idx-2] < macd[idx-1]) and (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]):
+        if ready_start_flag_1 and ready_start_flag_1 <= 3:   # 3 transaction days pending
+            if (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]):
                 start_flag1 = 1
             else:
                 start_flag1 = 0
-
-            if Ema5_line[idx] >= Ema100_line[idx]:
+            if consol_flag == False:
                 start_flag2 = 1
             else:
                 start_flag2 = 0
-
             if (obv_line[idx] > MA_obv_line[idx]):
                 start_flag3 = 1
             else:
                 start_flag3 = 0
+            if (Ema5_line[idx] > Ema8_line[idx]) and (Ema8_line[idx] > Ema13_line[idx]):
+                start_flag4 = 1
+            else:
+                start_flag4 = 0
 
             if start_flag1 and start_flag2 and start_flag3:
-                start_point_list.append(close_list[idx])
-                start_time_list.append(time_tap[idx])
+                start_point_list.append(df['close'][idx])
+                start_time_list.append(df['date'][idx])
                 start_idx_list.append(idx)
                 ready_start_flag_1 = 0
                 start_flag1 = 0
                 start_flag2 = 0
                 start_flag3 = 0
-                pending_flag = 0
+                start_flag4 = 0
             elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):
                 ready_start_flag_1 = 1
             else:
                 ready_start_flag_1 = ready_start_flag_1 + 1
-
-            if pending_flag:
-                if (macd[idx] < 0) and (diff[idx] < 0):
-                    pending_flag = 0
         else:
             ready_start_flag_1 = 0                        # transaction days expired
 
@@ -137,19 +146,23 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
                     break
             # consolidation============================================
             if consol_flag == True:
-                # end_flag1 = 1
+                end_flag1 = 1
                 end_flag2 = 1
                 end_flag3 = 1
             # preferred sell condition=================================
-            # if close_list[idx] < up_line_1[idx] and (diff[idx] > 0):
-            #     end_flag1 = 1
+            if close_list[idx] < Ema25_line[idx] and (diff[idx] > 0):
+                end_flag1 = 1
+            if Hist[idx] <= 0:
+                end_flag2 = 1
+            if close_list[idx] <= Bollin_mask[2][idx]:
+                end_flag3 = 1
             if (obv_line[idx-1] < MA_obv_line[idx-1]) and (obv_line[idx] < MA_obv_line[idx]):
                 end_flag4 = 1
 
             # =========================================================
-            if end_flag1 + end_flag4:
-                end_point = close_list[idx]
-                end_time = time_tap[idx]
+            if end_flag1 + end_flag2 + end_flag3 + end_flag4 >= 3:
+                end_point = df['close'][idx]
+                end_time = df['date'][idx]
                 for idx_s in range(len(start_point_list)):
                     reward_record.append(end_point-start_point_list[idx_s])
                     time_stamp.append(
@@ -158,101 +171,32 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
                 start_time_list = []
                 end_point = 0
                 end_flag1 = 0
+                end_flag2 = 0
+                end_flag3 = 0
                 end_flag4 = 0
-
-                if (macd[idx] > 0) and (diff[idx] > 0):
-                    pending_flag = 1
-                else:
-                    pending_flag = 0
         # ========================================================================================================
 
     for idx_s in range(len(start_point_list)):
-        reward_record.append(close_list[idx-1]-start_point_list[idx_s])
+        reward_record.append(df['close'][idx-1]-start_point_list[idx_s])
         time_stamp.append(
-            (start_time_list[idx_s], time_tap[idx-1], start_point_list[idx_s], close_list[idx-1]))
+            (start_time_list[idx_s], df['date'][idx-1], start_point_list[idx_s], end_point))
     consol_date = []
     tmp = []
     pre_ele = 0
     for idx, element in enumerate(consol_decision):
         if pre_ele == 0 and element == 1:
-            tmp.append(time_tap[idx])
+            tmp.append(df['date'][idx])
         elif pre_ele == 1 and element == 0:
-            tmp.append(time_tap[idx])
+            tmp.append(df['date'][idx])
             consol_date.append(tmp)
             tmp = []
         pre_ele = element
 
-    if plotting:
-        fig, axs = plt.subplots(3)
-        axs[0].plot(time_tap, close_list, label='close')
-        axs[0].plot(time_tap, Bollin_mask[1],
-                    label='BL up', linestyle='dashed')
-        axs[0].plot(time_tap, Bollin_mask[2],
-                    label='BL down', linestyle='dashed')
-        for data in time_stamp:
-            axs[0].plot(data[0], data[2], marker='o', markersize=3, color='r')
-            axs[0].plot(data[1], data[3], marker='o', markersize=3, color='g')
-        for date_set in consol_date:
-            axs[0].axvspan(date_set[0], date_set[1],
-                           facecolor='pink', alpha=0.2)
-            axs[1].axvspan(date_set[0], date_set[1],
-                           facecolor='pink', alpha=0.2)
-        # axs[0].legend()
-        axs[1].bar(time_tap, Hist)
-        axs[1].plot(time_tap, macd, label='macd')
-        axs[1].plot(time_tap, diff, label='diff')
-        axs[1].plot(time_tap, Ema5_line, label='diff')
-        axs[1].plot(time_tap, Ema100_line, label='diff')
-        axs[1].legend()
-        axs[2].plot(time_tap, obv_line, label='obv')
-        axs[2].plot(time_tap, MA_obv_line, label='ma_obv')
-        axs[2].legend()
-        plt.show()
-
     return [reward_record, time_stamp, Bollin_mask, consol_date]
 
 
-def figure_plot(stock_id, year, month):
-    [reward, time_stamp, Bollin_mask, consol_date] = past_synthesis(
-        stock_id, year, month, print_log=False)
-    print(reward)
-    print(time_stamp)
-    stock = Stock(stock_id)
-    data = stock.fetch_from(year, month)
-    df = pd.DataFrame(data)
-
-    time_tap = df['date'].tolist()
-    volumn = df['capacity'].tolist()
-    close_list = df['close'].tolist()
-    [macd, diff, Hist] = MACD(close_list)
-    [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
-
-    # ema7 = EMA_cal(7,close_list)
-    # bottom_line = EMA_cal(25, close_list)
-
-    fig, axs = plt.subplots(3)
-    axs[0].plot(time_tap, close_list, label='close')
-    axs[0].plot(time_tap, Bollin_mask[1], label='BL up', linestyle='dashed')
-    axs[0].plot(time_tap, Bollin_mask[2], label='BL down', linestyle='dashed')
-    for data in time_stamp:
-        axs[0].plot(data[0], data[2], marker='o', markersize=3, color='r')
-        axs[0].plot(data[1], data[3], marker='o', markersize=3, color='g')
-    for date_set in consol_date:
-        axs[0].axvspan(date_set[0], date_set[1], facecolor='pink', alpha=0.2)
-        axs[1].axvspan(date_set[0], date_set[1], facecolor='pink', alpha=0.2)
-    # axs[0].legend()
-    axs[1].bar(time_tap, Hist)
-    axs[1].plot(time_tap, macd, label='macd')
-    axs[1].plot(time_tap, diff, label='diff')
-    axs[1].legend()
-    axs[2].plot(time_tap, obv_line, label='obv')
-    axs[2].plot(time_tap, MA_obv_line, label='ma_obv')
-    axs[2].legend()
-    plt.show()
-
-
 def OBV_calculation(close_list, volumn):
-    MA_days = 25
+    MA_days = 20
     obv_line = []
     MA_obv_line = []
     for idx in range(len(close_list)):
