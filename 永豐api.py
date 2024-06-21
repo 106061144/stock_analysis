@@ -1,7 +1,7 @@
-import shioaji as sj #將shioaji重新命名為sj
-api = sj.Shioaji(simulation=True) #初始化時，simulation設為True，代表要使用模擬環境
+import shioaji as sj  # 將shioaji重新命名為sj
+api = sj.Shioaji()
 api.login(
-    person_id="PAPIUSER01", 
-    passwd="2222"
+    person_id="G122339838",
+    passwd="838933221gG"
 )
-api.logout() #登出
+api.logout()  # 登出

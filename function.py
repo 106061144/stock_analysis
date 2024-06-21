@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from sqlalchemy import create_engine
 from twstock import Stock
+import yfinance as yf
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.dates import date2num
@@ -17,19 +18,20 @@ from tqdm import tqdm
 def qualify_stock(stock_id, year, month):
     try:
         stock = Stock(stock_id)
+        print('0')
         data = stock.fetch_from(year-1, month)
+        print('1')
         df = pd.DataFrame(data)
         close_list = df['close'].tolist()
         [macd, diff, Hist] = MACD(close_list[:200])
+        print('2')
         macd_std = np.std(macd)
-        print('hello', end=' ')
-        print(macd_std)
         if macd_std > 0:
             return True
         else:
             return False
     except:
-        print(r'stock {stock_id} may not exist')
+        print(f'stock {stock_id} may not exist')
         return False
 
 
@@ -40,6 +42,9 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
     close_list = df['close'].tolist()
     time_tap = df['date'].tolist()
     volumn = df['capacity'].tolist()
+
+    # vol_intervals = volumn_profile(df, 30, time_tap[0], time_tap[-1])
+
     [macd, diff, Hist] = MACD(close_list)
 
     Ema100_line = EMA_cal(100, close_list)
@@ -201,8 +206,6 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
         axs[1].bar(time_tap, Hist)
         axs[1].plot(time_tap, macd, label='macd')
         axs[1].plot(time_tap, diff, label='diff')
-        axs[1].plot(time_tap, Ema5_line, label='diff')
-        axs[1].plot(time_tap, Ema100_line, label='diff')
         axs[1].legend()
         axs[2].plot(time_tap, obv_line, label='obv')
         axs[2].plot(time_tap, MA_obv_line, label='ma_obv')
@@ -210,6 +213,46 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
         plt.show()
 
     return [reward_record, time_stamp, Bollin_mask, consol_date]
+
+
+def volumn_profile(df, percentage, start_date, end_date):
+
+    df = df[df['date'] >= start_date]
+    df_target = df[df['date'] <= end_date]
+    TTick = df_target['date'].tolist()
+    capacity = df_target['capacity'].tolist()
+    high_point = df_target['high'].tolist()
+    highest_point = max(df_target['high'])
+    low_point = df_target['low'].tolist()
+    lowest_point = min(df_target['low'])
+    vol_intervals = []
+    dis = highest_point-lowest_point
+    total_num = int(dis*100)
+    count_record = np.zeros(total_num)
+
+    for idx in range(len(TTick)):
+        per_num = capacity[idx]/(high_point[idx]-low_point[idx])
+        start_count = int((low_point[idx]-lowest_point)*100)
+        end_count = int((high_point[idx]-lowest_point)*100)
+        for idx_1 in range(start_count, end_count):
+            count_record[idx_1] = count_record[idx_1] + per_num
+
+    keep = True
+    level = 0
+    target_volumn = int(sum(count_record)*percentage/100)
+    max_count = max(count_record)
+    step = int(max_count/100)
+
+    while (sum(count_record) > target_volumn):
+        count_record = [((count-step) > 0)*(count-step)
+                        for count in count_record]
+        level = level+1
+
+    count_record = [count > 0 for count in count_record]
+
+    plt.plot(count_record)
+    plt.show()
+    return count_record
 
 
 def figure_plot(stock_id, year, month):
@@ -249,6 +292,8 @@ def figure_plot(stock_id, year, month):
     axs[2].plot(time_tap, MA_obv_line, label='ma_obv')
     axs[2].legend()
     plt.show()
+
+    return
 
 
 def OBV_calculation(close_list, volumn):
