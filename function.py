@@ -1,9 +1,9 @@
+import warnings
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 from sqlalchemy import create_engine
 from twstock import Stock
-import yfinance as yf
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.dates import date2num
@@ -13,26 +13,223 @@ from datetime import date
 from datetime import datetime
 from selenium import webdriver
 from tqdm import tqdm
+import os
+import yfinance as yf
+
+
+def Parse_all_category_stocks():
+    root_url = 'https://goodinfo.tw/tw/StockList.asp'
+    option = webdriver.ChromeOptions()
+    option.add_experimental_option("detach", True)
+    driver = webdriver.Chrome(options=option)
+    driver.get(root_url)
+    soup = BeautifulSoup(driver.page_source, 'lxml')
+    look_up_table = soup.find_all(
+        "table", {"id": "MENU1"})
+    all_urls = []
+    if look_up_table != []:
+        target_table = look_up_table[0]
+        all_lines = target_table.findAll('tr')
+        for line in all_lines[2:10]:
+            urls = line.findAll('a')
+            for url in urls:
+                name = url.text
+                link = url.get('href')
+                all_urls.append([name, 'https://goodinfo.tw'+link])
+    Category, link = zip(*all_urls)
+    df = pd.DataFrame(data={'Category': Category, 'link': link})
+    driver.quit()
+
+    return df
+
+
+def Parse_certain_category_stocks(link):
+    option = webdriver.ChromeOptions()
+    option.add_experimental_option("detach", True)
+    driver = webdriver.Chrome(options=option)
+    driver.get(link)
+    soup = BeautifulSoup(driver.page_source, 'lxml')
+    look_up_table = soup.find_all(
+        "table", {"id": "tblStockList"})
+    id_list = []
+    if look_up_table != []:
+        target_table = look_up_table[0]
+        raw_list = target_table.findAll('tr')
+        for line in raw_list:
+            elements = line.findAll('a')
+            id = elements[0].text
+            try:
+                id_num = int(id)
+                id_list.append(id)
+            except:
+                pass
+    driver.quit()
+    return id_list
 
 
 def qualify_stock(stock_id, year, month):
     try:
         stock = Stock(stock_id)
-        print('0')
         data = stock.fetch_from(year-1, month)
-        print('1')
         df = pd.DataFrame(data)
         close_list = df['close'].tolist()
-        [macd, diff, Hist] = MACD(close_list[:200])
-        print('2')
+        [macd, diff, Hist] = MACD_calculation(close_list[:200])
         macd_std = np.std(macd)
-        if macd_std > 0:
+        if macd_std > 1:
             return True
         else:
             return False
     except:
         print(f'stock {stock_id} may not exist')
         return False
+
+
+def to_sell(stock_id, start_date, buy_day, buy_point):
+    try:
+        data = yf.Ticker(stock_id+'.TW')
+        df = data.history(start=start_date)
+        close_list = df['Close'].tolist()
+        volumn = df['Volume'].tolist()
+        time_tap = df.index
+    except:
+        tqdm.write(f'Stock {stock_id} doesn\'t exist')
+        return [0, 0, 0]
+
+    if len(close_list) < 10:
+        try:
+            stock = Stock(stock_id)
+            date_split = start_date.split('-')
+            data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
+            df = pd.DataFrame(data)
+            close_list = df['close'].tolist()
+            volumn = df['capacity'].tolist()
+            time_tap = df['date'].tolist()
+            tqdm.write(f'no problem')
+        except:
+            tqdm.write(f'Stock {stock_id} parse fail')
+            return [0, 0, 0]
+    for tt_idx, tt in enumerate(time_tap):
+        tt = tt.strftime("%Y-%m-%d")
+        if tt == buy_day:
+            start_idx = tt_idx
+            break
+
+    [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
+    [center_line_1, up_line_1, down_line_1] = Bollin_Band_cal(
+        close_list, 50, 1.2)
+    end_point = 0
+    end_time = 0
+    end_flag1 = 0
+    end_flag4 = 0
+    for idx in range(start_idx, len(close_list)):
+        # stop loss point==========================================
+        if close_list[idx] < buy_point - 2*(up_line_1[start_idx] - center_line_1[start_idx]):
+            end_flag1 = 1
+        # 獲利點
+        if (obv_line[idx-1] < MA_obv_line[idx-1]) and (obv_line[idx] < MA_obv_line[idx]):
+            end_flag4 = 1
+        # =========================================================
+        if end_flag1 + end_flag4:
+            end_point = close_list[idx]
+            end_time = time_tap[idx]
+            break
+    # ========================================================================================================
+    return [end_point, end_time]
+
+
+def to_buy_main(stock_list, start_date):
+    qualified_stock = []
+    candidates = []
+    flag = True
+    for stock_id in tqdm(stock_list):
+        if flag:
+            qualified_stock.append(stock_id)
+            buy_info = to_buy(stock_id, start_date)
+            if buy_info[0]:
+                candidates.append(buy_info[1:])
+    if candidates == []:
+        print('no appropriate stock')
+    else:
+        df = pd.DataFrame(candidates)
+        rename_dic = {0: "id", 1: "close value"}
+        df = df.rename(rename_dic, axis=1)
+        df = df.sort_values(by="close value")
+        print(df)
+
+
+def to_buy(stock_id, start_date):
+    try:
+        data = yf.Ticker(stock_id+'.TW')
+        df = data.history(start=start_date)
+        close_list = df['Close'].tolist()
+        volumn = df['Volume'].tolist()
+    except:
+        tqdm.write(f'Stock {stock_id} doesn\'t exist')
+        return [0, 0, 0]
+    if len(close_list) < 10:
+        try:
+            stock = Stock(stock_id)
+            date_split = start_date.split('-')
+            data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
+            df = pd.DataFrame(data)
+            close_list = df['close'].tolist()
+            volumn = df['capacity'].tolist()
+            tqdm.write(f'data found')
+        except:
+            tqdm.write(f'Stock {stock_id} parse fail')
+            return [0, 0, 0]
+    Ema60_line = EMA_cal(60, close_list)
+    Ema5_line = EMA_cal(5, close_list)
+    [macd, diff, Hist] = MACD_calculation(close_list)
+    [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
+    macd_std = np.std(macd)
+
+    start_point_list = []
+    start_time_list = []
+    ready_start_flag_1 = 0
+    start_flag1 = 0
+    start_flag2 = 0
+    start_flag3 = 0
+    start_point_list = []
+    start_time_list = []
+    for idx in range(len(macd)-10, len(macd)):
+        # buy condition
+        macd_std = np.std(macd[:idx])
+
+        if ready_start_flag_1 == 0 and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):   # case 1
+            if (start_time_list == []):
+                ready_start_flag_1 = 1
+
+        if (ready_start_flag_1 and ready_start_flag_1 <= 3):   # 3 transaction days pending
+            if (macd[idx-2] < macd[idx-1]) and (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-2] < 0) and (Hist[idx] > 0):
+                start_flag1 = 1
+            else:
+                start_flag1 = 0
+
+            if Ema5_line[idx] >= Ema60_line[idx]:
+                start_flag2 = 1
+            else:
+                start_flag2 = 0
+
+            if (obv_line[idx] > MA_obv_line[idx]):
+                start_flag3 = 1
+            else:
+                start_flag3 = 0
+
+            if (start_flag1 + start_flag2 + start_flag3 >= 3) and idx >= len(macd)-2:
+                start_point_list.append(close_list[idx])
+                ready_start_flag_1 = 0
+                start_flag1 = 0
+                start_flag2 = 0
+                start_flag3 = 0
+            elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):
+                ready_start_flag_1 = 1
+            else:
+                ready_start_flag_1 = ready_start_flag_1 + 1
+
+        else:
+            ready_start_flag_1 = 0                        # transaction days expired
+    return (len(start_point_list) > 0, stock_id, close_list[-1])
 
 
 def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
@@ -42,10 +239,10 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
     close_list = df['close'].tolist()
     time_tap = df['date'].tolist()
     volumn = df['capacity'].tolist()
-
+    pred_flag = False
     # vol_intervals = volumn_profile(df, 30, time_tap[0], time_tap[-1])
 
-    [macd, diff, Hist] = MACD(close_list)
+    [macd, diff, Hist] = MACD_calculation(close_list)
 
     Ema100_line = EMA_cal(100, close_list)
     Ema5_line = EMA_cal(5, close_list)
@@ -121,6 +318,8 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
                 start_flag2 = 0
                 start_flag3 = 0
                 pending_flag = 0
+                if len(macd)-idx < 3:
+                    pred_flag = True
             elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < thr_1) and (abs(macd[idx]) < thr_1):
                 ready_start_flag_1 = 1
             else:
@@ -156,7 +355,8 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
                 end_point = close_list[idx]
                 end_time = time_tap[idx]
                 for idx_s in range(len(start_point_list)):
-                    reward_record.append(end_point-start_point_list[idx_s])
+                    reward_record.append(round(
+                        (end_point-start_point_list[idx_s])/end_point*100, 2))
                     time_stamp.append(
                         (start_time_list[idx_s], end_time, start_point_list[idx_s], end_point))
                 start_point_list = []
@@ -172,7 +372,8 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
         # ========================================================================================================
 
     for idx_s in range(len(start_point_list)):
-        reward_record.append(close_list[idx-1]-start_point_list[idx_s])
+        reward_record.append(round(
+            (close_list[idx-1]-start_point_list[idx_s])/close_list[idx-1]*100, 2))
         time_stamp.append(
             (start_time_list[idx_s], time_tap[idx-1], start_point_list[idx_s], close_list[idx-1]))
     consol_date = []
@@ -212,7 +413,7 @@ def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
         axs[2].legend()
         plt.show()
 
-    return [reward_record, time_stamp, Bollin_mask, consol_date]
+    return [reward_record, time_stamp, Bollin_mask, consol_date, pred_flag]
 
 
 def volumn_profile(df, percentage, start_date, end_date):
@@ -256,7 +457,7 @@ def volumn_profile(df, percentage, start_date, end_date):
 
 
 def figure_plot(stock_id, year, month):
-    [reward, time_stamp, Bollin_mask, consol_date] = past_synthesis(
+    [reward, time_stamp, Bollin_mask, consol_date, pred_flag] = past_synthesis(
         stock_id, year, month, print_log=False)
     print(reward)
     print(time_stamp)
@@ -267,7 +468,7 @@ def figure_plot(stock_id, year, month):
     time_tap = df['date'].tolist()
     volumn = df['capacity'].tolist()
     close_list = df['close'].tolist()
-    [macd, diff, Hist] = MACD(close_list)
+    [macd, diff, Hist] = MACD_calculation(close_list)
     [obv_line, MA_obv_line] = OBV_calculation(close_list, volumn)
 
     # ema7 = EMA_cal(7,close_list)
@@ -335,16 +536,18 @@ def ETF_list(ETF_id_list):
         soup = BeautifulSoup(driver.page_source, 'lxml')
         look_up_table = soup.find_all(
             "table", {"class": "p4_2 row_bg_2n row_mouse_over"})
-
-        target_table = look_up_table[1]
-        raw_list = target_table.findAll('nobr')
-        corp_list = []
-        for idx in range(len(raw_list)):
-            if (idx % 3 == 0) and (raw_list[idx] not in id_list):
-                corp_list.append(raw_list[idx].text)
-        Corp_dict[ETF_id] = corp_list
-        Corp_df = pd.DataFrame(dict([(k, pd.Series(v))
-                               for k, v in Corp_dict.items()]))
+        if look_up_table != []:
+            target_table = look_up_table[1]
+            raw_list = target_table.findAll('nobr')
+            corp_list = []
+            for idx in range(len(raw_list)):
+                if (idx % 3 == 0) and (raw_list[idx] not in id_list):
+                    corp_list.append(raw_list[idx].text)
+            Corp_dict[ETF_id] = corp_list
+        else:
+            print(f'cannot find ETF number {ETF_id}')
+    Corp_df = pd.DataFrame(dict([(k, pd.Series(v))
+                                 for k, v in Corp_dict.items()]))
     return Corp_df
 
 
@@ -352,15 +555,15 @@ def Update_potential_stock():
     f = open('high_level_control.txt', 'r')
     update_flag = False
     Today = date.today()
-    Today = Today.strftime("%Y/%m/%d")
-    try:
+    Today = Today.strftime("%Y/%m")
+    if os.path.exists('ETF_list_record.csv'):
         ETF_df = pd.read_csv('ETF_list_record.csv')
-        Update_date = datetime.strptime(ETF_df['Update date'][0], '%Y/%m/%d')
-        Update_date = Update_date.strftime("%Y/%m/%d")
+        Update_date = datetime.strptime(ETF_df['Update date'][0], '%Y/%m')
+        Update_date = Update_date.strftime("%Y/%m")
         if (Update_date != Today):
             ETF_df = pd.DataFrame([Today], columns=['Update date'])
             update_flag = True
-    except:
+    else:
         ETF_df = pd.DataFrame([Today], columns=['Update date'])
         update_flag = True
 
@@ -377,6 +580,7 @@ def Update_potential_stock():
                         [Today], columns=['Update date'])
                     update_flag = True
             if update_flag:
+
                 etf_df = ETF_list(etf_list)
                 ETF_df = pd.concat([ETF_df, etf_df], axis=1)
                 ETF_df.to_csv('ETF_list_record.csv', index=False)
@@ -444,7 +648,7 @@ def EMA_cal(N, record):  # return a list length=record.length
     return ema_record
 
 
-def MACD(record):
+def MACD_calculation(record):
     Ema26 = EMA_cal(26, record)
     Ema12 = EMA_cal(12, record)
     Diff = []
