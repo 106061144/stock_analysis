@@ -138,15 +138,38 @@ def to_sell(stock_id, start_date, buy_day, buy_point):
 
 
 def to_buy_main(stock_list, start_date):
-    qualified_stock = []
     candidates = []
-    flag = True
+
+    if os.path.exists('parse_record.csv'):
+        parse_df = pd.read_csv('parse_record.csv')
+        yf = parse_df['yfinance'].values
+        tw = parse_df['twstock'].values
+    else:
+        _dict = dict.fromkeys(['yfinance', 'twstock'])
+        _dict['yfinance'] = []
+        _dict['twstock'] = []
+        parse_df = pd.DataFrame(_dict)
+        yf = []
+        tw = []
+    new_yf = []
+    new_tw = []
     for stock_id in tqdm(stock_list):
-        if flag:
-            qualified_stock.append(stock_id)
-            buy_info = to_buy(stock_id, start_date)
-            if buy_info[0]:
-                candidates.append(buy_info[1:])
+        buy_info = to_buy(stock_id, start_date, yf, tw)
+
+        if buy_info[1] == 1:  # new yf
+            new_yf.append(stock_id)
+        elif buy_info[1] == 2:  # new yf
+            new_tw.append(stock_id)
+
+        if buy_info[0]:
+            candidates.append(buy_info[2:])
+    if new_yf != [] or new_tw != []:
+        yf.extend(new_yf)
+        tw.extend(new_tw)
+        parse_df['yfinance'] = yf
+        parse_df['twstock'] = tw
+        parse_df.to_csv('parse_record.csv', index=False)
+
     if candidates == []:
         print('no appropriate stock')
     else:
@@ -157,27 +180,49 @@ def to_buy_main(stock_list, start_date):
         print(df)
 
 
-def to_buy(stock_id, start_date):
-    try:
-        data = yf.Ticker(stock_id+'.TW')
-        df = data.history(start=start_date)
-        close_list = df['Close'].tolist()
-        volumn = df['Volume'].tolist()
-    except:
-        tqdm.write(f'Stock {stock_id} doesn\'t exist')
-        return [0, 0, 0]
-    if len(close_list) < 10:
-        try:
+def to_buy(stock_id, start_date, yf, tw):
+    found = False
+    check = 0
+    if yf != [] or tw != []:
+        if stock_id in yf:
+            found = True
+            data = yf.Ticker(stock_id+'.TW')
+            df = data.history(start=start_date)
+            close_list = df['Close'].tolist()
+            volumn = df['Volume'].tolist()
+        elif stock_id in tw:
+            found = True
             stock = Stock(stock_id)
             date_split = start_date.split('-')
             data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
             df = pd.DataFrame(data)
             close_list = df['close'].tolist()
             volumn = df['capacity'].tolist()
-            tqdm.write(f'data found')
+    if not found:  # new stock or stock doesn't exist
+        try:
+            data = yf.Ticker(stock_id+'.TW')
+            df = data.history(start=start_date)
+            close_list = df['Close'].tolist()
+            volumn = df['Volume'].tolist()
+            check = 1
         except:
-            tqdm.write(f'Stock {stock_id} parse fail')
-            return [0, 0, 0]
+            close_list = []
+            tqdm.write(f'Stock {stock_id} doesn\'t exist')
+            # return [0, 0, 0, 0]
+        if len(close_list) < 10:
+            try:
+                stock = Stock(stock_id)
+                date_split = start_date.split('-')
+                data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
+                df = pd.DataFrame(data)
+                close_list = df['close'].tolist()
+                volumn = df['capacity'].tolist()
+                tqdm.write(f'data found')
+                check = 2
+            except:
+                tqdm.write(f'Stock {stock_id} parse fail')
+                return [0, 0, 0, 0]
+
     Ema60_line = EMA_cal(60, close_list)
     Ema5_line = EMA_cal(5, close_list)
     [macd, diff, Hist] = MACD_calculation(close_list)
@@ -201,7 +246,8 @@ def to_buy(stock_id, start_date):
                 ready_start_flag_1 = 1
 
         if (ready_start_flag_1 and ready_start_flag_1 <= 3):   # 3 transaction days pending
-            if (macd[idx-2] < macd[idx-1]) and (macd[idx-1] < macd[idx]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-2] < 0) and (Hist[idx] > 0):
+            # macd: 慢線, diff: 快線
+            if (macd[idx] - macd[idx-1] > macd[idx-1] - macd[idx-2]) and (macd[idx-1] - macd[idx-2] >= macd[idx-2] - macd[idx-3]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-1] <= 0):
                 start_flag1 = 1
             else:
                 start_flag1 = 0
@@ -229,7 +275,7 @@ def to_buy(stock_id, start_date):
 
         else:
             ready_start_flag_1 = 0                        # transaction days expired
-    return (len(start_point_list) > 0, stock_id, close_list[-1])
+    return ((len(start_point_list) > 0), check, stock_id, close_list[-1])
 
 
 def past_synthesis(stock_id, year, month, print_log=False, plotting=False):
