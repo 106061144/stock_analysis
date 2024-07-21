@@ -17,8 +17,12 @@ if __name__ == '__main__':
     sell_info = to_sell('2342', '2024-04-01', '2024-07-12', 34.15)
     print(sell_info)
 
-    # df = Parse_all_category_stocks()
-    stock_list = Update_potential_stock()
+    df = Parse_all_category_stocks()
+    category = ['all']
+    update_from_offline = True
+    update_from_online = True
+    stock_list = Update_potential_stock(
+        update_from_offline, update_from_online, category)
     #
     # link = df[df['Category'] == '半導體業']['link'].values
     # links = df['link'].values
@@ -26,7 +30,8 @@ if __name__ == '__main__':
     # for link in links:
     #     stocks = Parse_certain_category_stocks(link)
     #     stock_list.extend(stocks)
-    stock_list = list(set(stock_list))  # remove duplicate items
+
+    # stock_list = list(set(stock_list))  # remove duplicate items
     to_buy_main(stock_list, '2024-04-01')
 
     # plot and analysis
