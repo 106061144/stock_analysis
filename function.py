@@ -202,21 +202,22 @@ def to_sell(stock_id, start_date, buy_day, buy_point):
     return [end_point, end_time]
 
 
-def to_buy_main(stock_list, start_date):
+def to_buy_main(stock_list, start_date, add_new=False):
     candidates = []
-
+    if not add_new:
+        print('Don\'t analyze new stock')
     if os.path.exists('parse_record.csv'):
         print('----------------')
         parse_df = pd.read_csv('parse_record.csv')
-        yf = list(parse_df['yfinance'].values)
-        tw = list(parse_df['twstock'].values)
+        yf_list = list(parse_df['yfinance'].values)
+        tw_list = list(parse_df['twstock'].values)
     else:
         _dict = dict.fromkeys(['yfinance', 'twstock'])
         _dict['yfinance'] = []
         _dict['twstock'] = []
         parse_df = pd.DataFrame(_dict)
-        yf = []
-        tw = []
+        yf_list = []
+        tw_list = []
     new_yf = []
     new_tw = []
     for stock_id in tqdm(stock_list):
@@ -224,7 +225,7 @@ def to_buy_main(stock_list, start_date):
         if not pd.isna(stock_id):
             if stock_id[0] == '\'':
                 stock_id = stock_id[1:]
-            buy_info = to_buy(stock_id, start_date, yf, tw)
+            buy_info = to_buy(stock_id, start_date, yf_list, tw_list, add_new)
 
             if buy_info[1] == 1:  # new yf
                 new_yf.append(stock_id)
@@ -233,9 +234,9 @@ def to_buy_main(stock_list, start_date):
             if buy_info[0]:
                 candidates.append(buy_info[2:])
     if new_yf != [] or new_tw != []:
-        yf.extend(new_yf)
-        tw.extend(new_tw)
-        parse_dict = {'yfinance': yf, 'twstock': tw}
+        yf_list.extend(new_yf)
+        tw_list.extend(new_tw)
+        parse_dict = {'yfinance': yf_list, 'twstock': tw_list}
         parse_df = pd.DataFrame(dict([(key, pd.Series(value))
                                       for key, value in parse_dict.items()]))
         parse_df.to_csv('parse_record.csv', index=False)
@@ -247,52 +248,63 @@ def to_buy_main(stock_list, start_date):
         rename_dic = {0: "id", 1: "close value"}
         df = df.rename(rename_dic, axis=1)
         df = df.sort_values(by="close value")
+        df.insert(0, "Update date", date.today())
+        df.to_csv('Buy_Result.csv', index=False)
         print(df)
 
 
-def to_buy(stock_id, start_date, yf, tw):
+def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
     found = False
     check = 0
-    if yf != []:
-        if int(stock_id) in yf:
-            found = True
-            data = yf.Ticker(stock_id+'.TW')
-            df = data.history(start=start_date)
-            close_list = df['Close'].tolist()
-            volumn = df['Volume'].tolist()
-    if tw != []:
-        if int(stock_id) in tw:
-            found = True
-            stock = Stock(stock_id)
-            date_split = start_date.split('-')
-            data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
-            df = pd.DataFrame(data)
-            close_list = df['close'].tolist()
-            volumn = df['capacity'].tolist()
-    if not found:  # new stock or stock doesn't exist
-        try:
-            data = yf.Ticker(stock_id+'.TW')
-            df = data.history(start=start_date)
-            close_list = df['Close'].tolist()
-            volumn = df['Volume'].tolist()
-            check = 1
-        except:
-            close_list = []
-            tqdm.write(f'Stock {stock_id} doesn\'t exist')
-            # return [0, 0, 0, 0]
-        if len(close_list) < 10:
+    if yf_list != []:
+        if int(stock_id) in yf_list:
             try:
+                found = True
+                data = yf.Ticker(stock_id+'.TW')
+                df = data.history(start=start_date)
+                close_list = df['Close'].tolist()
+                volumn = df['Volume'].tolist()
+            except:
+                pass
+    if tw_list != []:
+        if int(stock_id) in tw_list:
+            try:
+                found = True
                 stock = Stock(stock_id)
                 date_split = start_date.split('-')
                 data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
                 df = pd.DataFrame(data)
                 close_list = df['close'].tolist()
                 volumn = df['capacity'].tolist()
-                tqdm.write(f'data found')
-                check = 2
             except:
-                tqdm.write(f'Stock {stock_id} parse fail')
-                return [0, 0, 0, 0]
+                pass
+    if not found:  # new stock or stock doesn't exist
+        if add_new:
+            try:
+                data = yf.Ticker(stock_id+'.TW')
+                df = data.history(start=start_date)
+                close_list = df['Close'].tolist()
+                volumn = df['Volume'].tolist()
+                check = 1
+            except:
+                close_list = []
+                tqdm.write(f'Stock {stock_id} doesn\'t exist')
+                # return [0, 0, 0, 0]
+            if len(close_list) < 10:
+                try:
+                    stock = Stock(stock_id)
+                    date_split = start_date.split('-')
+                    data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
+                    df = pd.DataFrame(data)
+                    close_list = df['close'].tolist()
+                    volumn = df['capacity'].tolist()
+                    tqdm.write(f'data found')
+                    check = 2
+                except:
+                    tqdm.write(f'Stock {stock_id} parse fail')
+                    return [0, 0, 0, 0]
+        else:
+            return [0, 0, 0, 0]
 
     Ema60_line = EMA_cal(60, close_list)
     Ema5_line = EMA_cal(5, close_list)

@@ -31,7 +31,6 @@ if __name__ == '__main__':
     #     stocks = Parse_certain_category_stocks(link)
     #     stock_list.extend(stocks)
 
-    # stock_list = list(set(stock_list))  # remove duplicate items
     to_buy_main(stock_list, '2024-04-01')
 
     # plot and analysis
