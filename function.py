@@ -294,7 +294,8 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
                 try:
                     stock = Stock(stock_id)
                     date_split = start_date.split('-')
-                    data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
+                    data = stock.fetch_from(
+                        int(date_split[0]), int(date_split[1]))
                     df = pd.DataFrame(data)
                     close_list = df['close'].tolist()
                     volumn = df['capacity'].tolist()
@@ -345,7 +346,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
             else:
                 start_flag3 = 0
 
-            if (start_flag1 + start_flag2 + start_flag3 >= 3) and idx >= len(macd)-2:
+            if (start_flag1 + start_flag2 + start_flag3 == 3) and (idx >= len(macd)-2):
                 start_point_list.append(close_list[idx])
                 ready_start_flag_1 = 0
                 start_flag1 = 0

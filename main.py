@@ -23,15 +23,15 @@ if __name__ == '__main__':
     update_from_online = True
     stock_list = Update_potential_stock(
         update_from_offline, update_from_online, category)
-    #
+
+    to_buy_main(stock_list, '2024-04-01')
+
     # link = df[df['Category'] == '半導體業']['link'].values
     # links = df['link'].values
     # stock_list = []
     # for link in links:
     #     stocks = Parse_certain_category_stocks(link)
     #     stock_list.extend(stocks)
-
-    to_buy_main(stock_list, '2024-04-01')
 
     # plot and analysis
     # figure_plot('3533', 2023, 1)
