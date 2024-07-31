@@ -321,44 +321,33 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
     start_flag3 = 0
     start_point_list = []
     start_time_list = []
-    for idx in range(len(macd)-10, len(macd)):
+    for idx in range(len(macd)-2, len(macd)):
         # buy condition
         macd_std = np.std(macd[:idx])
 
-        if ready_start_flag_1 == 0 and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):   # case 1
-            if (start_time_list == []):
-                ready_start_flag_1 = 1
-
-        if (ready_start_flag_1 and ready_start_flag_1 <= 3):   # 3 transaction days pending
-            # macd: 慢線, diff: 快線
-            if (macd[idx] - macd[idx-1] > macd[idx-1] - macd[idx-2]) and (macd[idx-1] - macd[idx-2] >= macd[idx-2] - macd[idx-3]) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-1] <= 0):
-                start_flag1 = 1
-            else:
-                start_flag1 = 0
-
-            if Ema5_line[idx] >= Ema60_line[idx]:
-                start_flag2 = 1
-            else:
-                start_flag2 = 0
-
-            if (obv_line[idx] > MA_obv_line[idx]):
-                start_flag3 = 1
-            else:
-                start_flag3 = 0
-
-            if (start_flag1 + start_flag2 + start_flag3 == 3) and (idx >= len(macd)-2):
-                start_point_list.append(close_list[idx])
-                ready_start_flag_1 = 0
-                start_flag1 = 0
-                start_flag2 = 0
-                start_flag3 = 0
-            elif (diff[idx-1] < macd[idx-1]) and (diff[idx] < macd[idx]) and (Hist[idx-1] < Hist[idx]) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):
-                ready_start_flag_1 = 1
-            else:
-                ready_start_flag_1 = ready_start_flag_1 + 1
-
+        # macd: 慢線, diff: 快線
+        if (macd[idx] - macd[idx-1] > macd[idx-1] - macd[idx-2]) and ((macd[idx-1] - macd[idx-2]) >= (macd[idx-2] - macd[idx-3])) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-1] <= 0) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):
+            start_flag1 = 1
         else:
-            ready_start_flag_1 = 0                        # transaction days expired
+            start_flag1 = 0
+
+        if Ema5_line[idx] >= Ema60_line[idx]:
+            start_flag2 = 1
+        else:
+            start_flag2 = 0
+
+        if (obv_line[idx] > MA_obv_line[idx]):
+            start_flag3 = 1
+        else:
+            start_flag3 = 0
+
+        if (start_flag1 + start_flag2 + start_flag3 == 3):
+            start_point_list.append(close_list[idx])
+            ready_start_flag_1 = 0
+            start_flag1 = 0
+            start_flag2 = 0
+            start_flag3 = 0
+
     return ((len(start_point_list) > 0), check, stock_id, close_list[-1])
 
 
