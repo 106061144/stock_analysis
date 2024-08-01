@@ -341,9 +341,13 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if (start_flag1 + start_flag2 + start_flag3 == 3):
+        if volumn[idx] > 100:
+            start_flag4 = 1
+        else:
+            start_flag4 = 0
+
+        if (start_flag1 + start_flag2 + start_flag3 + start_flag4 == 4):
             start_point_list.append(close_list[idx])
-            ready_start_flag_1 = 0
             start_flag1 = 0
             start_flag2 = 0
             start_flag3 = 0
