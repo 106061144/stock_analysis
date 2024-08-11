@@ -25,7 +25,7 @@ if __name__ == '__main__':
     sell_info = to_sell('0056', '2024-04-01', '2024-07-26', 38.67)
     print(sell_info)
 
-    df = Parse_all_category_stocks()
+    # df = Parse_all_category_stocks()
     category = ['all']
     update_from_offline = True
     update_from_online = True
