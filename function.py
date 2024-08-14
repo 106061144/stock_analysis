@@ -225,8 +225,11 @@ def to_buy_main(stock_list, start_date, add_new=False):
         if not pd.isna(stock_id):
             if stock_id[0] == '\'':
                 stock_id = stock_id[1:]
-            buy_info = to_buy(stock_id, start_date, yf_list, tw_list, add_new)
-
+            buy_info = [0,0,0,0]
+            try:    
+                buy_info = to_buy(stock_id, start_date, yf_list, tw_list, add_new)
+            except:
+                pass
             if buy_info[1] == 1:  # new yf
                 new_yf.append(stock_id)
             elif buy_info[1] == 2:  # new yf
@@ -306,7 +309,8 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
                     return [0, 0, 0, 0]
         else:
             return [0, 0, 0, 0]
-
+    #if len(close_list) == 0:
+    #    return [0, 0, 0, 0]
     Ema60_line = EMA_cal(60, close_list)
     Ema5_line = EMA_cal(5, close_list)
     [macd, diff, Hist] = MACD_calculation(close_list)
@@ -341,7 +345,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if volumn[idx] > 100:
+        if mean(volumn[idx-7:idx]) > 100:
             start_flag4 = 1
         else:
             start_flag4 = 0
@@ -351,6 +355,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
             start_flag1 = 0
             start_flag2 = 0
             start_flag3 = 0
+            start_flag4 = 0
 
     return ((len(start_point_list) > 0), check, stock_id, close_list[-1])
 
