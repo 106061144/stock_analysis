@@ -14,7 +14,7 @@ if __name__ == '__main__':
     print(sell_info)
     sell_info = to_sell('0056', '2024-04-01', '2024-08-08', 36.67)
     print(sell_info)
-    sell_info = to_sell('2342', '2024-04-01', '2024-08-08', 100.1)
+    sell_info = to_sell('006208', '2024-04-01', '2024-08-08', 100.1)
     print(sell_info)
 
     # df = Parse_all_category_stocks()
