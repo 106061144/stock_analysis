@@ -225,9 +225,10 @@ def to_buy_main(stock_list, start_date, add_new=False):
         if not pd.isna(stock_id):
             if stock_id[0] == '\'':
                 stock_id = stock_id[1:]
-            buy_info = [0,0,0,0]
-            try:    
-                buy_info = to_buy(stock_id, start_date, yf_list, tw_list, add_new)
+            buy_info = [0, 0, 0, 0]
+            try:
+                buy_info = to_buy(stock_id, start_date,
+                                  yf_list, tw_list, add_new)
             except:
                 pass
             if buy_info[1] == 1:  # new yf
@@ -309,7 +310,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
                     return [0, 0, 0, 0]
         else:
             return [0, 0, 0, 0]
-    #if len(close_list) == 0:
+    # if len(close_list) == 0:
     #    return [0, 0, 0, 0]
     Ema60_line = EMA_cal(60, close_list)
     Ema5_line = EMA_cal(5, close_list)
@@ -330,7 +331,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         macd_std = np.std(macd[:idx])
 
         # macd: 慢線, diff: 快線
-        if (macd[idx] - macd[idx-1] > macd[idx-1] - macd[idx-2]) and ((macd[idx-1] - macd[idx-2]) >= (macd[idx-2] - macd[idx-3])) and (diff[idx-1] < diff[idx]) and (diff[idx-2] < diff[idx-1]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-1] <= 0) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):
+        if (macd[idx] - macd[idx-1] > macd[idx-1] - macd[idx-2]) and ((macd[idx-1] - macd[idx-2]) >= (macd[idx-2] - macd[idx-3])) and (diff[idx-1] < diff[idx]) and (Hist[idx-2] < Hist[idx-1]) and (Hist[idx-1] < Hist[idx]) and (Hist[idx-1] <= 0) and (abs(macd[idx-1]) < macd_std) and (abs(macd[idx]) < macd_std):
             start_flag1 = 1
         else:
             start_flag1 = 0
@@ -345,7 +346,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if mean(volumn[idx-7:idx]) > 100:
+        if mean(volumn[idx-7:idx]) > 300 and volumn[idx] > 200:
             start_flag4 = 1
         else:
             start_flag4 = 0
