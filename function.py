@@ -202,7 +202,8 @@ def to_sell(stock_id, start_date, buy_day, buy_point):
     return [end_point, end_time]
 
 
-def to_buy_main(stock_list, start_date, add_new=False):
+def to_buy_main(stock_list, DB_start_date='2024-04-01', add_new=False):
+    start_date = DB_start_date
     candidates = []
     if not add_new:
         print('Don\'t analyze new stock')
@@ -346,7 +347,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if mean(volumn[idx-7:idx]) > 300 and volumn[idx] > 200:
+        if mean(volumn[idx-7:idx]) > 300*1000 and volumn[idx] > 200*1000:
             start_flag4 = 1
         else:
             start_flag4 = 0
