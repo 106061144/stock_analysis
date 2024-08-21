@@ -347,7 +347,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if mean(volumn[idx-7:idx]) > 300*1000 and volumn[idx] > 200*1000:
+        if mean(volumn[idx-7:idx]) > 500*1000 and volumn[idx] > 500*1000:
             start_flag4 = 1
         else:
             start_flag4 = 0
