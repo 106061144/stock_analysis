@@ -327,7 +327,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
     start_flag3 = 0
     start_point_list = []
     start_time_list = []
-    for idx in range(len(macd)-2, len(macd)):
+    for idx in range(len(macd)-1, len(macd)):
         # buy condition
         macd_std = np.std(macd[:idx])
 
@@ -347,7 +347,7 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
         else:
             start_flag3 = 0
 
-        if mean(volumn[idx-7:idx]) > 500*1000 and volumn[idx] > 500*1000:
+        if mean(volumn[idx-7:idx]) > 500*1000:
             start_flag4 = 1
         else:
             start_flag4 = 0
