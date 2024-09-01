@@ -107,7 +107,8 @@ def Parse_all_category_stocks():
     driver.get(root_url)
     soup = BeautifulSoup(driver.page_source, 'lxml')
     look_up_table = soup.find_all(
-        "table", {"id": "MENU1"})
+        "table", {"class": "b1 p4_2 r0_10 box_shadow"})
+    print(look_up_table)
     all_urls = []
     if look_up_table != []:
         target_table = look_up_table[0]
@@ -118,6 +119,7 @@ def Parse_all_category_stocks():
                 name = url.text
                 link = url.get('href')
                 all_urls.append([name, 'https://goodinfo.tw'+link])
+    print(all_urls)
     Category, link = zip(*all_urls)
     df = pd.DataFrame(data={'Category': Category, 'link': link})
     driver.quit()
