@@ -9,22 +9,20 @@ import yfinance as yf
 if __name__ == '__main__':
 
     warnings.filterwarnings("ignore")
-    DB_start_date = '2024-04-01'
-
-    sell_info = to_sell('9934', DB_start_date, '2024-08-08', 17.5)
-    print(sell_info)
-    sell_info = to_sell('0056', DB_start_date, '2024-08-08', 36.67)
-    print(sell_info)
-    sell_info = to_sell('006208', DB_start_date, '2024-08-08', 100.1)
-    print(sell_info)
+    # sell_info = to_sell('9934', DB_start_date, '2024-08-08', 17.5)
+    # print(sell_info)
+    # sell_info = to_sell('0056', DB_start_date, '2024-08-08', 36.67)
+    # print(sell_info)
+    # sell_info = to_sell('006208', DB_start_date, '2024-08-08', 100.1)
+    # print(sell_info)
 
     # df = Parse_all_category_stocks()
-    category = ['all']
-    update_from_offline = True
+    category = ['all']  # default: 'all'
+    update_from_offline = False
     update_from_online = True
     stock_list = Update_potential_stock(
         update_from_offline, update_from_online, category)
-
+    # Update_DB(stock_list)
     to_buy_main(stock_list, add_new=False)
 
     # link = df[df['Category'] == '半導體業']['link'].values

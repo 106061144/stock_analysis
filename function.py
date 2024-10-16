@@ -15,6 +15,52 @@ from selenium import webdriver
 from tqdm import tqdm
 import os
 import yfinance as yf
+import glob
+
+
+def Update_DB(stock_list):
+    folder = "DataBase"
+    for stock_id in tqdm(stock_list):
+        Data_found = True
+        if not pd.isna(stock_id):
+            if stock_id[0] == '\'':
+                stock_id = stock_id[1:]
+            update_flag = False
+            filename = folder + '/' + stock_id + '.csv'
+            old_date = pd.to_datetime('2021-01-04')
+            if os.path.isfile(filename):
+                update_flag = True
+                old_df = pd.read_csv(filename)
+                old_date = pd.to_datetime(list(old_df['Date'])[-1])
+            try:
+                try:
+                    data = yf.Ticker(stock_id+'.TW')
+                    new_df = data.history(start=old_date)
+                    if new_df.empty:
+                        print(new_df[0][0])  # intentionally error
+                    new_df = new_df.reset_index()
+                    new_df['Date'] = pd.to_datetime(
+                        new_df['Date'].apply(lambda x: x.strftime('%Y-%m-%d')))
+                except:
+                    tqdm.write('check twstock')
+                    stock = Stock(stock_id)
+                    data = stock.fetch_from(old_date.year, old_date.month)
+                    new_df = pd.DataFrame(data)
+                    new_df.rename(columns={'date': 'Date', 'capacity': 'Volume', 'high': 'High',
+                                           'low': 'Low', 'open': 'Open', 'close': 'Close'}, inplace=True)
+            except:
+                tqdm.write(f'Parse {stock_id} fail...')
+                Data_found = False
+            if Data_found:
+                new_df = new_df.loc[:, ['Date', 'Open',
+                                        'High', 'Low', 'Close', 'Volume']]
+
+                new_df = new_df[new_df['Date'] > old_date]
+                if update_flag:
+                    merged_df = pd.concat([old_df, new_df])
+                else:
+                    merged_df = new_df
+                merged_df.to_csv(filename, index=False)
 
 
 def Update_potential_stock(from_offline, from_online, category=['all']):
