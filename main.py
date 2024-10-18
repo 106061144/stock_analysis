@@ -23,7 +23,7 @@ if __name__ == '__main__':
     stock_list = Update_potential_stock(
         update_from_offline, update_from_online, category)
     # Update_DB(stock_list)
-    to_buy_main(stock_list, add_new=False)
+    to_buy_main(stock_list, add_new=True)
 
     # link = df[df['Category'] == '半導體業']['link'].values
     # links = df['link'].values

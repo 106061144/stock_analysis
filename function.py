@@ -312,23 +312,25 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
     if yf_list != []:
         if int(stock_id) in yf_list:
             try:
-                found = True
                 data = yf.Ticker(stock_id+'.TW')
                 df = data.history(start=start_date)
-                close_list = df['Close'].tolist()
-                volumn = df['Volume'].tolist()
+                if not df.empty:
+                    found = True
+                    close_list = df['Close'].tolist()
+                    volumn = df['Volume'].tolist()
             except:
                 pass
     if tw_list != []:
         if int(stock_id) in tw_list:
             try:
-                found = True
                 stock = Stock(stock_id)
                 date_split = start_date.split('-')
                 data = stock.fetch_from(int(date_split[0]), int(date_split[1]))
                 df = pd.DataFrame(data)
-                close_list = df['close'].tolist()
-                volumn = df['capacity'].tolist()
+                if not df.empty:
+                    found = True
+                    close_list = df['close'].tolist()
+                    volumn = df['capacity'].tolist()
             except:
                 pass
     if not found:  # new stock or stock doesn't exist
@@ -350,10 +352,14 @@ def to_buy(stock_id, start_date, yf_list, tw_list, add_new):
                     data = stock.fetch_from(
                         int(date_split[0]), int(date_split[1]))
                     df = pd.DataFrame(data)
-                    close_list = df['close'].tolist()
-                    volumn = df['capacity'].tolist()
-                    tqdm.write(f'data found')
-                    check = 2
+                    if not df.empty():
+                        close_list = df['close'].tolist()
+                        volumn = df['capacity'].tolist()
+                        tqdm.write(f'data found')
+                        check = 2
+                    else:
+                        tqdm.write(f'Stock {stock_id} parse fail')
+                        return [0, 0, 0, 0]
                 except:
                     tqdm.write(f'Stock {stock_id} parse fail')
                     return [0, 0, 0, 0]
